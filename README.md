@@ -46,6 +46,43 @@ dsh plugin --profile web add dsh-codex-workflow
 Restart the DSH web profile after installation. For source installs during
 development, pass the local project directory to the same command.
 
+## Existing Desktop hosts on macOS/Linux
+
+Install this package through the existing Desktop's plugin manager and restart
+that same host. Keep `DSH_HOME` set to that application's actual Harness data
+root, not a second CLI profile. The bridge talks to the running plugin's local
+SQLite queue; invoking the bridge CLI does not start a DSH host.
+
+For a plugin installed only inside a Desktop profile, invoke its shipped CLI
+with a configured profile name and your Node executable:
+
+```sh
+export DSH_HOME="<existing-desktop-harness-data-root>"
+export DSH_PROFILE="<profile-name>"
+node "$DSH_HOME/profiles/$DSH_PROFILE/node_modules/dsh-codex-workflow/lib/bridge-cli.js" \
+  sessions --cwd "$PWD" --json
+```
+
+Use the same entrypoint for `dispatch`, `status`, `workflows`, and `show`.
+Pass an explicit `--dsh-session` for a dedicated idle session when the workspace
+has several sessions, and the genuine source Codex thread through
+`--codex-thread` or `CODEX_THREAD_ID`. A new workspace needs a Desktop session
+before dispatch; the queue CLI does not create sessions. Absolute POSIX paths
+are supported, including spaces and Unicode. On POSIX, case and literal
+backslashes remain significant.
+
+The two workflow directions above intentionally keep Codex planning/review
+read-only while DSH implements. For a separate, general DSH-to-Codex task,
+install the official `@deepseek-ai/dsh-subagent-codex` bundle in the same host
+and expose its `subagent_codex` tool in a copied Agent Preset, following that
+bundle's documentation. Do not assume existing sessions acquire new tools.
+Its bundled native Codex version may have a different supported model catalogue
+from a newer standalone CLI; choose a supported model from the native
+`model/list` and configure the provider, `plannerModel`, and `reviewerModel`
+explicitly when needed. Preserve native authentication, sandbox and approval
+settings. Bound reverse calls to one self-contained task and prohibit recursive
+DSH/Codex delegation.
+
 ## Build and verify
 
 ```powershell
