@@ -128,7 +128,15 @@ dedicated Reviewer task --codex exec --ephemeral --output-schema--> normalizatio
 
 ### Reviewer writer-lock semantics
 
-Before an App Server review turn, the plugin `thread/resume`s the dedicated Reviewer task (`reviewerThreadId` — always a dedicated, visible task since 1.1.2) and releases it again (`thread/unsubscribe`) when the operation settles; a legacy `exec` task is never resumed at all, it is only renamed with `thread/name/set`, which takes no writer lock. Idempotent cleanup only: the plugin does not re-subscribe for display, read/fork the task for rendering, or invoke the Desktop opener. The review remains on that Reviewer task; users open it manually when convenient. Legacy opener fields remain compatible but audit records keep `desktopOpenState: "disabled"`.
+A newly created Reviewer already owns the subscription returned by
+`thread/start`; its first callback turn runs directly, without `thread/resume`.
+Before that first turn there is no rollout to read. The empty `thread/start`
+history supplies the initial baseline only while this client still holds the
+fresh thread. Starting a turn, resuming, releasing, or stopping the process
+invalidates that baseline. Completed results and later baselines still require
+real persisted history; missing existing rollouts are never treated as empty.
+
+For a later App Server review turn, the plugin `thread/resume`s the dedicated Reviewer task (`reviewerThreadId` — always a dedicated, visible task since 1.1.2) and releases it again (`thread/unsubscribe`) when the operation settles; a legacy `exec` task is never resumed at all, it is only renamed with `thread/name/set`, which takes no writer lock. Idempotent cleanup only: the plugin does not re-subscribe for display, read/fork the task for rendering, or invoke the Desktop opener. The review remains on that Reviewer task; users open it manually when convenient. Legacy opener fields remain compatible but audit records keep `desktopOpenState: "disabled"`.
 
 **A visible Reviewer can be held by Codex Desktop — and that is retried (1.1.3).** Because the Reviewer task is now renderable, OPENING it in Desktop makes Desktop hold that task's writer lock, and the next round's `thread/resume` fails with `thread <id> already has an active writer` until the user closes it. The control RPCs (create, configure, resume, per-round settings refresh) therefore run under the same bounded transient policy as every visible turn: they back off and continue, a spent budget keeps the round RETRYABLE (no cycle, no `reviewContractFailures`; on the callback path `retryable_busy` plus the periodic recovery sweep), and cancel/teardown interrupts a pending backoff at once. The plugin never releases a lock it does not own: a FAILED `thread/resume` acquired nothing, and a successful resume whose settings refresh failed releases only the plugin's OWN subscription before backing off, so a retry can never be blocked by the plugin's own hold. Reviewer creation is retried on the SAME task id (`thread/start` runs once; a retry re-configures it), so a flaky settings/name call cannot leak one orphan task per attempt.
 
