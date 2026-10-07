@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { encodeBridgeCommand, newRequestId, parseReviewResult, type DispatchPlanCommand, type SubmitVerdictCommand } from "./bridge-protocol.js";
 import { BridgeStore } from "./bridge-store.js";
+import { cwdKey } from "./coordination.js";
 import { PLUGIN_VERSION } from "./version.js";
 
 const WORKFLOW_PHASES = new Set([
@@ -44,7 +45,7 @@ async function readLiveSessions(directory: string): Promise<Array<{ id: string; 
 }
 
 function sameCwd(left: string, right: string): boolean {
-  return resolve(left).toLowerCase() === resolve(right).toLowerCase();
+  return cwdKey(left) === cwdKey(right);
 }
 
 async function withStore<T>(directory: string, operation: (store: BridgeStore) => Promise<T>, maxPayloadBytes = resolveMaxPayloadBytes()): Promise<T> {

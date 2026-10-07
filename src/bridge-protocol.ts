@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { posix } from "node:path";
 import type { ReviewResult } from "./types.js";
 
 export const BRIDGE_PROTOCOL_VERSION = 1;
@@ -91,7 +92,7 @@ function parseTarget(value: unknown): { dshSessionId?: string; cwd: string } {
   if (!isPlainObject(value)) fail("target must be an object");
   const cwd = requireString(value.cwd, "target.cwd", true);
   const cwdPath = cwd.replace(/\//g, "\\");
-  if (!/^[a-zA-Z]:\\/.test(cwdPath)) fail("target.cwd must be an absolute Windows path");
+  if (!posix.isAbsolute(cwd) && !/^[a-zA-Z]:\\/.test(cwdPath)) fail("target.cwd must be an absolute path");
   const result: { dshSessionId?: string; cwd: string } = { cwd };
   if (value.dshSessionId !== undefined) {
     result.dshSessionId = requireString(value.dshSessionId, "target.dshSessionId", true);

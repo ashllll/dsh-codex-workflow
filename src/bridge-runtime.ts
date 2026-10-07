@@ -79,7 +79,7 @@ type ResolvedTarget =
   | { kind: "terminal"; reason: string };
 
 function sameCwd(left: string, right: string): boolean {
-  return resolve(left).toLowerCase() === resolve(right).toLowerCase();
+  return cwdKey(left) === cwdKey(right);
 }
 
 function errorMessage(error: unknown): string {
