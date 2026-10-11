@@ -63,13 +63,38 @@ node "$DSH_HOME/profiles/$DSH_PROFILE/node_modules/dsh-codex-workflow/lib/bridge
   sessions --cwd "$PWD" --json
 ```
 
-Use the same entrypoint for `dispatch`, `status`, `workflows`, and `show`.
-Pass an explicit `--dsh-session` for a dedicated idle session when the workspace
-has several sessions, and the genuine source Codex thread through
-`--codex-thread` or `CODEX_THREAD_ID`. A new workspace needs a Desktop session
-before dispatch; the queue CLI does not create sessions. Absolute POSIX paths
-are supported, including spaces and Unicode. On POSIX, case and literal
-backslashes remain significant.
+Use this entrypoint for the entire Desktop lifecycle. With the existing Desktop
+running and the plugin loaded, create or resume a dedicated worker without UI:
+
+```sh
+printf '%s' '{"action":"ensure_session","preset":"codex-bridge"}' | \
+  dsh-codex-workflow control --cwd "$PWD" --codex-thread "$CODEX_THREAD_ID" --stdin --json
+```
+
+Poll `status --request <id> --json` and use `receipt.data.sessionId` as the explicit
+`dispatch --dsh-session` target. Identity is stable per genuine source Codex
+thread, canonical absolute cwd and exact preset; it does not adopt user sessions.
+Requires the public `agentPresets`, `agentDefaultModel` and `sessionQuery` services.
+Absolute POSIX paths support spaces and Unicode; case and literal backslashes
+remain significant on POSIX.
+
+Use `control` with stdin JSON and the same cwd/source for subsequent operations:
+
+- `{"action":"result","workflowId":"<id>"}` returns bounded assistant text,
+  last turn-end reason, live status, workflow phase and full review.
+- `{"action":"followup","workflowId":"<id>","message":"<bounded correction>"}`
+  sends a deduplicated followup only to that workflow's active owner.
+- `{"action":"cancel","workflowId":"<id>"}` requests cancellation; poll result
+  until phase is `cancelled` **and** status is `idle` before taking over.
+- `{"action":"read_session","preset":"codex-bridge"}` checks the dedicated worker.
+
+Result text excludes reasoning/tool output and unrelated later inputs; generated
+context and verified same-workflow review relays do not truncate the result.
+Receipt delivery or idle alone is not success: inspect turn completion, review,
+and actual files/checks. Routine session creation, input, result reads, corrections
+and cancellation must use this protocol, including on failure. UI is limited to
+app startup, plugin installation/loading/configuration and human login/approval.
+Protocol failures are blockers, never permission for GUI or headless fallback.
 
 The two workflow directions above intentionally keep Codex planning/review
 read-only while DSH implements. For a separate, general DSH-to-Codex task,
@@ -98,12 +123,12 @@ pnpm doctor
 From the Codex task that owns the plan, dispatch it to the live DSH session:
 
 ```powershell
-# 1. Find the live DSH session for this workspace
-dsh-codex-workflow sessions --cwd $PWD --json
+# 1. Ensure the dedicated session and collect its receipt.data.sessionId
+'{"action":"ensure_session","preset":"codex-bridge"}' | dsh-codex-workflow control --cwd $PWD --codex-thread $env:CODEX_THREAD_ID --stdin --json
 
 # 2. Dispatch the plan (payload enters through stdin, never arguments)
 $payload = '{"task":"实现搜索功能","planMarkdown":"<proposed_plan>…</proposed_plan>","assumptions":[]}'
-$payload | dsh-codex-workflow dispatch --cwd $PWD --codex-thread $env:CODEX_THREAD_ID --stdin
+$payload | dsh-codex-workflow dispatch --cwd $PWD --dsh-session <receipt-session-id> --codex-thread $env:CODEX_THREAD_ID --stdin
 ```
 
 The bridge resolves the exact session (explicit `--dsh-session` wins; otherwise the cwd must match exactly one live session, and ambiguity fails loudly). DSH receives the plan as a plugin relay message and implements it. When done, DSH calls `codex_workflow_submit`; the plugin validates the **exact stored Codex task id** read-only, then runs the readable audit on the workflow's **dedicated Reviewer task** — the originating task is never resumed and never written:
